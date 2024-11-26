@@ -1,0 +1,102 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Check Object') {
+            steps {
+                script {
+                    // Define the AWS S3 bucket name
+                    def bucketName = 'artifact-sample' #bucket name
+                    
+                    // Specify the folder name within the S3 bucket
+                    def folderPath = 'work' #folder path
+
+                    // Prompt the user for the object name and capture it
+                    def objectName = input(
+                        id: 'object-input',
+                        message: 'Enter the Artifact:',
+                        parameters: [
+                            string(defaultValue: '', description: 'Pass the artifact', name: 'ARTIFACT_NAME')
+                        ]
+                    )
+
+                    // Check if the user provided an object name
+                    if (!objectName || objectName.trim() == '') {
+                        error 'Artifact is required.'
+                    }
+
+                    // Define the AWS CLI command to list the contents of the S3 bucket and subfolders
+                    def listBucketContentsCommand = "aws s3 ls s3://${bucketName}/${folderPath}/"
+
+                    // Execute the command and capture the output
+                    def commandOutput = sh(script: listBucketContentsCommand, returnStdout: true).trim()
+
+                    // Split the command output into lines
+                    def lines = commandOutput.readLines()
+
+                    // Initialize variables to keep track of the latest object details
+                    def latestObject = null
+                    def latestObjectTimestamp = null
+
+                    // Define a regular expression to match the timestamp and key
+                    def regex = /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\d+)\s+(.+)/
+
+                    // Iterate through the lines to find the latest object
+                    for (def line : lines) {
+                        def matcher = (line =~ regex)
+                        if (matcher.matches()) {
+                            def objectTimestamp = matcher[0][1]
+                            def objectKey = matcher[0][3]
+
+                            // Extract just the artifact name (the last part of the object key)
+                            def artifactName = objectKey.split('/').last()
+
+                            // Compare timestamps to find the latest object
+                            if (latestObjectTimestamp == null || objectTimestamp > latestObjectTimestamp) {
+                                latestObjectTimestamp = objectTimestamp
+                                latestObject = artifactName
+                            }
+                        }
+                    }
+
+                    // Check if the provided object matches the latest object
+                    if (latestObject != null) {
+                        echo "Latest artifact in S3 Bucket '${bucketName}/${folderPath}': ${latestObject}"
+
+                        if (latestObject == objectName) {
+                            echo "The provided artifact '${objectName}' is the latest artifact."
+                        } else {
+                            // Display a warning and ask for confirmation
+                            def continueResponse = input(
+                                id: 'confirm-continue',
+                                message: "WARNING!!! The provided artifact '${objectName}' is not the latest artifact. Are you sure you want to continue?",
+                                parameters: [
+                                    [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Continue?', name: 'CONTINUE']
+                                ]
+                            )
+
+                            // Check the user's response
+                            if (!continueResponse) {
+                                error "Operation aborted by the user."
+                            }
+                        }
+                    } else {
+                        error "No artifacts found in S3 Bucket '${bucketName}/${folderPath}'."
+                    }
+
+                    // Check the exit status of the command
+                    if (currentBuild.resultIsBetterOrEqualTo('SUCCESS')) {
+                        echo 'Bucket Contents Listed Successfully'
+                        echo "Objects in S3 Bucket '${bucketName}/${folderPath}':"
+                        lines.each { line ->
+                            echo line
+                        }
+                    } else {
+                        error 'Failed to List Bucket Contents.'
+                    }
+                }
+            }
+        }
+    }
+}
+
