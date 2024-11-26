@@ -4,8 +4,11 @@ This repository contains a Jenkins pipeline script designed to validate user-pro
 **Features:**
 User Input: Prompts the user to specify the artifact for processing.
 AWS S3 Integration: Lists and validates contents from an S3 bucket using the AWS CLI.
+
 Artifact Validation: Compares the user-provided artifact with the latest artifact in the bucket based on timestamps.
+
 Dynamic Decision Making: Warns and requests confirmation before proceeding if the artifact does not match the latest version.
+
 Error Handling: Ensures robust error reporting for missing artifacts or invalid input.
 
 **Use Case:**
